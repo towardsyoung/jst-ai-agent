@@ -1,0 +1,4 @@
+interface:
+  display_name: "聚水潭智能经营分析"
+  short_description: "自动识别登录公司，分析聚水潭销量、库存、采购加工及补货情景"
+  default_prompt: "使用 $jst-ai-agent 分析当前登录公司的聚水潭经营数据，说明证据、统计口径和优先行动。"

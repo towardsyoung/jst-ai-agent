@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "company_id": "910001",
+  "name": "开发验收示例：EXAMPLE-SKU全部经营参数为假设，非任何企业确认规则",
+  "skus": {
+    "EXAMPLE-SKU": {
+      "mode": "manufacture",
+      "basis": "assumption",
+      "source": "仅演示补产算法。假设为自有成品、源数量单位个、补产至可销售完整周期30日、复核7日、安全7日、批量1、MOQ0；均未由企业确认。",
+      "lead_days": 30,
+      "review_days": 7,
+      "safety_days": 7,
+      "pack_multiple": 1,
+      "moq": 0,
+      "sku_assumptions": {
+        "business_type": "finished",
+        "ownership": "own",
+        "unit": "个"
+      }
+    }
+  },
+  "arrivals": []
+}
