@@ -178,6 +178,7 @@ class IdentityTests(unittest.TestCase):
 
 
 class LauncherTests(unittest.TestCase):
+    @unittest.skipIf(os.name == "nt", "POSIX shell/symlink入口；Windows使用Python入口")
     def test_launcher_follows_symlink_or_packaged_runtime_without_developer_path(self):
         source = Path(__file__).resolve().parents[1]/"skills/jst-ai-agent/scripts/query.sh"
         for packaged in (False, True):

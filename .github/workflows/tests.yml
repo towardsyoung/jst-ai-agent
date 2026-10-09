@@ -1,0 +1,20 @@
+name: Cross-platform checks
+on: [push, pull_request]
+jobs:
+  test:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    env:
+      PYTHONUTF8: '1'
+      JST_TEST_BROWSER: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -r requirements.txt
+      - run: python -m playwright install --with-deps chromium --no-shell
+      - run: python -m unittest discover -s tests -v
+      - run: python scripts/build_skill.py

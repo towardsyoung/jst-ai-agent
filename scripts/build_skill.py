@@ -5,9 +5,10 @@ from pathlib import Path
 from zipfile import ZipFile, ZipInfo, ZIP_DEFLATED
 
 ROOT = Path(__file__).resolve().parents[1]
-RUNTIME_FILES = ("query.sh", "requirements.txt", "jushuitan.py", "jst_analysis.py",
+RUNTIME_FILES = ("query.sh", "requirements.txt", "jushuitan.py", "jst_browser.py", "jst_analysis.py",
                  "jst_supply.py", "jst_replenishment.py", "config/replenishment-scenario-example.json")
 SKILL_FILES = ("SKILL.md", "agents/openai.yaml", "scripts/query.sh", "scripts/setup.sh",
+               "scripts/query.py", "scripts/setup.py", "scripts/_runtime.py",
                "references/session-access.md", "references/company-metrics.md",
                "references/sales-stock.md", "references/supply-review.md",
                "references/replenishment-plan.md", "references/replenishment.md",

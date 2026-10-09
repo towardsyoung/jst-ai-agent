@@ -204,7 +204,7 @@ def sales_summary(orders, limit=10):
 def chrome_session(cookie_path=CHROME_COOKIES):
     """只读取 erp321.com 域的 Cookie，不导出数据库或持久化明文。"""
     if sys.platform != "darwin":
-        raise QueryError("当前登录接入仅支持 macOS Chrome；Windows/Linux 浏览器认证尚未实现。")
+        raise QueryError("直接读取 Chrome 钥匙串仅支持 macOS；请使用 --auth browser 并先运行 browser-login。")
     try:
         result = subprocess.run(
             ["/usr/bin/security", "-q", "find-generic-password", "-w",
@@ -250,9 +250,36 @@ def chrome_session(cookie_path=CHROME_COOKIES):
         raise QueryError("无法读取本机 Chrome 的聚水潭会话，请检查登录状态和钥匙串访问。") from exc
 
 
+def browser_session():
+    from jst_browser import BrowserSessionError, browser_cookies
+    try:
+        cookies = browser_cookies()
+    except BrowserSessionError as exc:
+        raise QueryError(str(exc)) from exc
+    session = requests.Session()
+    try:
+        for cookie in cookies:
+            expiry = cookie.get("expires", -1)
+            session.cookies.set(cookie["name"], cookie["value"], domain=cookie["domain"],
+                                path=cookie["path"], secure=cookie["secure"],
+                                expires=int(expiry) if expiry > 0 else None)
+        session_identity(session)
+        session.headers.update({"Origin": "https://src.erp321.com",
+                                "Referer": "https://src.erp321.com/", "User-Agent": "Mozilla/5.0"})
+        return session
+    except QueryError as exc:
+        session.close()
+        raise QueryError("专用浏览器身份缺失或冲突，请运行 browser-login 重新登录并选择公司。") from exc
+
+
+def authentication_backend(auth="auto"):
+    return ("chrome" if sys.platform == "darwin" else "browser") if auth == "auto" else auth
+
+
 class Client:
     def __init__(self, session=None):
-        self.session = session if session is not None else chrome_session()
+        self.session = session if session is not None else (chrome_session() if
+                       authentication_backend() == "chrome" else browser_session())
         self.identity = session_identity(self.session)
         self.table_forms = {}
 
@@ -486,7 +513,7 @@ class Client:
 
 def main():
     parser = argparse.ArgumentParser(description="聚水潭只读查询：自动识别当前登录公司及用户")
-    parser.add_argument("command", choices=["session-check", "onsale-count", "sales-top",
+    parser.add_argument("command", choices=["browser-login", "session-check", "onsale-count", "sales-top",
                                             "catalog", "sales-lines", "sales-daily", "stock-sales",
                                             "purchase-lines", "manufacture-lines", "supply-review",
                                             "replenishment-plan"])
@@ -502,6 +529,8 @@ def main():
     parser.add_argument("--horizon", type=int, help="补货情景未来天数，默认30，范围1–365")
     parser.add_argument("--scenario-file", help="补货/补产参数与到货批次 JSON，必须声明来源及假设/确认")
     parser.add_argument("--chrome-profile", default="Default", help="Chrome Profile 目录名，如 Default 或 Profile 1")
+    parser.add_argument("--auth", choices=["auto", "chrome", "browser"], default="auto",
+                        help="auto：macOS 读取 Chrome，Windows/Linux 使用专用浏览器")
     args = parser.parse_args()
     client = None
     try:
@@ -530,8 +559,26 @@ def main():
             validate_plan_options(args)
         if args.chrome_profile != "Default" and not re.fullmatch(r"Profile [1-9][0-9]*", args.chrome_profile):
             raise QueryError("--chrome-profile 应为 Default 或 Profile N 的目录名。")
+        backend = authentication_backend(args.auth)
+        if args.command == "browser-login":
+            if args.auth == "chrome" or args.chrome_profile != "Default":
+                raise QueryError("browser-login 使用专用浏览器，不接受 --auth chrome 或 --chrome-profile。")
+            from jst_browser import BrowserSessionError, browser_cookies
+            try:
+                browser_cookies(login=True)
+            except BrowserSessionError as exc:
+                raise QueryError(str(exc)) from exc
+            with browser_session() as session:
+                identity = session_identity(session)
+                result = {"ok": True, "auth": "browser", "company_id": identity.company_id,
+                          "user_id": identity.user_id,
+                          "next_step": "运行 session-check 验证商品权限；macOS 需加 --auth browser。"}
+            print(json.dumps(result, ensure_ascii=False, indent=2))
+            return 0
+        if backend == "browser" and args.chrome_profile != "Default":
+            raise QueryError("--chrome-profile 仅适用于 macOS 的 --auth chrome。")
         cookie_path = CHROME_COOKIES.parent.parent / args.chrome_profile / "Cookies"
-        client = Client(session=chrome_session(cookie_path))
+        client = Client(session=chrome_session(cookie_path) if backend == "chrome" else browser_session())
         if args.command in plan_commands:
             from jst_replenishment import run_plan
             from jst_analysis import present_result

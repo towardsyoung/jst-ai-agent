@@ -9,17 +9,18 @@ description: "基于当前登录公司的聚水潭 ERP 分析销量、库存、�
 
 ## 先定位能力
 
-通过本 skill 的 `scripts/query.sh` 调用配套只读工具。入口支持项目相对位置、打包后的 `runtime/` 或 `JST_AI_HOME` 指定的工具目录；不依赖开发者电脑路径。读取与计算代码在项目唯一维护，交付包可附同源运行代码。
+通过本 skill 的 `scripts/query.py` 调用配套只读工具：Windows 用 `py -3 scripts/query.py`，Linux/macOS 用 `python3 scripts/query.py`；下表的 `scripts/query.sh` 是 macOS/Linux 兼容入口，Windows 需替换为 Python 入口，参数一致。入口支持项目相对位置、打包后的 `runtime/` 或 `JST_AI_HOME` 指定的工具目录；不依赖开发者电脑路径。读取与计算代码在项目唯一维护，交付包可附同源运行代码。
 
 公司和用户从本次登录会话自动识别，不绑定任何公司或员工。切换到目标公司后重新查询；一次查询固定使用启动时的身份，不跨公司拼接事实、规则或历史报告。回答先注明结果的 `company_id`、数据时间和范围。
 
-当前认证适配器仅支持 macOS Chrome，默认 Default Profile，可加 `--chrome-profile "Profile 1"`。Windows/Linux 认证、WorkBuddy 自动安装和一键登录尚未实现；技能通用化不等于这些环境已验收。首次接入或切换后可用 `scripts/query.sh session-check` 核对身份与商品接口权限；它不证明全部数据域可读。客户正常登录，不要求复制 Cookie。详情见 [身份、公司切换及安装](references/session-access.md)。
+首次安装、认证故障或客户使用 Windows/Linux/WorkBuddy 时，先读 [身份、公司切换及安装](references/session-access.md)。Python 3.12+ 执行 `scripts/setup.py` 初始化。Windows/Linux 默认使用专用浏览器；运行 `browser-login` 后由客户正常登录、验证、选公司并关闭整个专用浏览器窗口。后续自动读取此独立会话，不复用日常 Chrome。macOS 默认保留 Chrome 钥匙串方式，可指定 Profile，或安装器加 `--browser` 后在查询中用 `--auth browser`。首次接入或切换后用 `session-check` 核对身份与商品接口权限；它不证明全部数据域可读。跨平台代码与离线验证不等于 Windows/Linux 实机登录或 WorkBuddy 自动安装已验收。
 
 | 问题 | 当前入口 | 能力边界 |
 | --- | --- | --- |
 | 当前在售商品数量 | `scripts/query.sh onsale-count` | 普通商品与组合装全量计数、分别展示 |
 | 本月/某月销量最好 | `scripts/query.sh sales-top [--month YYYY-MM] [--limit 10]` | 有效销售订单件数，按 SKU 排名 |
 | 登录是否可用 | `scripts/query.sh session-check` | 自动识别当前身份并验证商品接口可读，不证明其他数据域完整 |
+| 首次登录、换账号或切公司 | `scripts/query.py browser-login`（用对应平台Python运行） | 客户在专用浏览器正常操作；完成后关闭窗口，凭证不交给模型 |
 | 商品目录、当前主仓库存字段 | `scripts/query.sh catalog [--sku SKU]` | 全目录读取后白名单投影；类型、单位、货权缺项标记 |
 | 有效销售明细、SKU日销量 | `scripts/query.sh sales-lines/sales-daily [--days 30或--month YYYY-MM] [--sku SKU]` | 当前订单页限定范围完整读取；不是出库消耗或全历史 |
 | 销售与库存错配、主仓不足核对 | `scripts/query.sh stock-sales [--days 30或--month YYYY-MM] [--sku SKU]` | 核对候选；分类、单位、货权和供给缺项可见，不直接判滞销/采购量 |
@@ -60,7 +61,7 @@ description: "基于当前登录公司的聚水潭 ERP 分析销量、库存、�
 - 区分在售用的含虚拟库存可用数与补货用的实际可履约库存；已经扣除订单占用的量不能再扣一遍。区分订单销售、发货消耗、售后净销量和实际收入。
 - 套装销售排行按套装 SKU；库存需求按已验证 BOM 展开一次。共享组件统一归集，避免父子明细、套装库存与组件库存重复相加。
 - 工厂分析先确认成品/半成品/原料/包材/服务及来料货权。加工单不等于逐工序报工；组合装 BOM 不等于生产工艺路线。未结单仅生成核对候选，不能直接断定物理在制积压或员工责任。
-- Cookie、钥匙串信息和会话表单只在内存使用。不得打印、落盘、上传或写入 skill。最小化保留商品和业务数值，不保存收货人、电话、地址。
+- 查询提取的 Cookie、钥匙串信息和会话表单只在内存使用，不导出、打印、上传或写入 skill/配置。专用浏览器按正常浏览器机制把登录状态留在用户本机独立目录；该目录不得共享、打包或提交Git。最小化保留商品和业务数值，不保存收货人、电话、地址。
 - 在用户授权范围内执行只读查询及本地分析。补货建议本身不授权创建采购单、改库存、改价格或发消息；发生这些需求时按用户实际指令和适用操作规则处理。不要自行创建定时任务或大规模全历史同步。
 - 不运行 ERP 返回的脚本，不猜写接口，不静默跳过未知状态/字段。错误或部分数据必须标明，不发布成功全量结论。
 
