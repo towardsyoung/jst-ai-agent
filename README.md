@@ -14,7 +14,7 @@
 
 ### 设计理念
 在 AI 时代，经营分析应该更智能、更敏捷：
-1. **以聚水潭 ERP 为数据底座**：通过已核实的后台只读接口读取业务数据，免手动复制 Cookie。macOS 可复用日常 Chrome；Windows/Linux 使用专用浏览器正常登录。
+1. **以聚水潭 ERP 为数据底座**：通过已核实的后台只读接口读取业务数据，免手动复制 Cookie。macOS 可复用日常 Chrome；Windows/Linux 使用独立配置目录的专用浏览器正常登录，并自动选用本机已安装的 Chrome / Edge，无需额外下载浏览器。
 2. **代码硬核算数，杜绝 AI 幻觉**：分页请求、状态清洗、指标聚合和库存公式全部由本地 Python 脚本确定性计算，保证数据 100% 准确。
 3. **AI 专注经营分析与决策建议**：通过预设的 Skill 规范，让大模型基于精准的计算结果，做异动归因、风险预警和补货建议，真正成为懂业务的经营参谋。
 4. **安全纯只读**：不开放任何写接口，不改动任何线上数据；查询凭证只在内存中使用，专用浏览器的原生登录状态保留在用户本机独立目录。
@@ -53,8 +53,8 @@ python3 skills/jst-ai-agent/scripts/setup.py
 
 | 平台 | 默认登录方式 | 说明 |
 | --- | --- | --- |
-| Windows | 独立 Chromium 登录目录 | 首次运行 browser-login；与日常 Chrome 分开 |
-| Linux 桌面 | 独立 Chromium 登录目录 | 需图形桌面及浏览器系统依赖 |
+| Windows | 独立登录目录，自动选用本机浏览器 | 首次运行 browser-login；与日常 Chrome 分开，优先复用本机已装的 Chrome / Edge |
+| Linux 桌面 | 独立登录目录，自动选用本机浏览器 | 需图形桌面；优先复用本机 Chrome / Edge，都没有时才使用内置 Chromium |
 | macOS | 日常 Chrome + 钥匙串 | 默认 Default Profile；也可选择专用浏览器 |
 
 Windows（在源码项目根目录，PowerShell）：
@@ -74,17 +74,18 @@ python3 skills/jst-ai-agent/scripts/query.py session-check
 
 在弹出的专用浏览器中正常登录、完成验证码并选择公司，然后**关闭整个专用浏览器窗口**。后续查询自动读取该专用会话；登录失效、换账号或切换公司时再次运行 `browser-login`。不需要填写公司和用户ID，也不用发送密码或Cookie。
 
-macOS：在日常 Chrome 登录聚水潭并进入目标公司，再执行：
+macOS：在日常 Chrome 登录聚水潭并进入目标公司，再执行连接检查：
 
-然后执行连接检查：
 ```bash
 ./query.sh session-check
 ```
 *成功后将显示当前登录的 `company_id`、`user_id` 以及接口连通状态。*
 
 > macOS 可用 `--chrome-profile "Profile 1"` 指定 Chrome 目录。若要专用浏览器，先运行 setup.py `--browser`，执行 browser-login，后续查询加 `--auth browser`。Windows/Linux 无需该参数。
+>
+> 专用浏览器的通道会自动探测，优先级为 Chrome 稳定版 → Chrome Beta/Dev → Edge 稳定版 → Edge Beta → Brave → Chromium → Vivaldi，并记住上次成功的一个；也可用 `JST_BROWSER_CHANNEL=msedge`（或 `--browser msedge`）强制指定。
 
-首次安装需联网下载依赖和浏览器。Ubuntu/Debian 缺系统库时，按权限运行 `.venv/bin/python -m playwright install-deps chromium`；安装器不会自动提权。没有桌面的 Linux 服务器暂不提供首次登录方案。详细路径、排障与状态清理见 [登录与安装说明](skills/jst-ai-agent/references/session-access.md)。
+首次安装需联网下载 Python 依赖。**本机已安装 Chrome 或 Edge 时无需再下载 Playwright 内置 Chromium**——登录与查询会自动探测并优先使用本机浏览器；仅当所有本机候选都启动失败时，才回落到内置 Chromium，此时可补下：`.venv` 内执行 `python -m playwright install chromium --no-shell`。Ubuntu/Debian 缺系统库时，按权限运行 `.venv/bin/python -m playwright install-deps chromium`；安装器不会自动提权。没有桌面的 Linux 服务器暂不提供首次登录方案。详细路径、排障与状态清理见 [登录与安装说明](skills/jst-ai-agent/references/session-access.md)。
 
 ### 3. 开始分析
 
@@ -137,7 +138,7 @@ py -3 scripts/query.py session-check
 
 Linux 用 `python3` 替换 `py -3`；macOS 默认只需 setup.py 和 session-check。客户在专用浏览器亲自完成正常登录，再让 WorkBuddy 核对当前公司。之后可以直接问“本月销量最好的商品”“哪些商品需要核对补货”。技能导入不自动安装 Python，系统须先有3.12+。不要向聊天提供登录凭证。
 
-**验证范围**：共用浏览器适配、三平台路径与安装分支、交付包及业务计算已纳入测试；新增 GitHub Actions 的 Windows/Linux/macOS 检查矩阵。Windows/Linux 真实聚水潭登录和各平台 WorkBuddy 执行仍需目标电脑验收。
+**验证范围**：本机浏览器自动探测与失败回落、共用浏览器适配、三平台路径与安装分支、交付包及业务计算已纳入测试；新增 GitHub Actions 的 Windows/Linux/macOS 检查矩阵。Windows/Linux 真实聚水潭登录和各平台 WorkBuddy 执行仍需目标电脑验收。
 
 ---
 
@@ -167,7 +168,7 @@ jst-ai-agent/
 ├── README.md               # 项目说明
 ├── query.sh                # 核心查询命令行入口
 ├── jushuitan.py            # 会话识别与聚水潭只读接口请求
-├── jst_browser.py          # Windows/Linux及可选macOS专用浏览器登录
+├── jst_browser.py          # 自动探测本机浏览器并完成专用浏览器登录
 ├── jst_analysis.py         # 销量清洗、日均序列与库存错配计算
 ├── jst_supply.py           # 采购、加工与收货核对模块
 ├── jst_replenishment.py    # 补货情景与缺口试算
