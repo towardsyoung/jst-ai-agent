@@ -84,8 +84,9 @@ macOS：在日常 Chrome 登录聚水潭并进入目标公司，再执行连接�
 > macOS 可用 `--chrome-profile "Profile 1"` 指定 Chrome 目录。若要专用浏览器，先运行 setup.py `--browser`，执行 browser-login，后续查询加 `--auth browser`。Windows/Linux 无需该参数。
 >
 > 专用浏览器的通道会自动探测，优先级为 Chrome 稳定版 → Chrome Beta/Dev → Edge 稳定版 → Edge Beta → Brave → Chromium → Vivaldi，并记住上次成功的一个；也可用 `JST_BROWSER_CHANNEL=msedge`（或 `--browser msedge`）强制指定。
+> 查询参数 `--browser` 可接收通道或可执行文件路径，优先于环境变量；显式指定失败时直接报错，不切换浏览器。在 macOS 上，该参数也会选择专用浏览器认证，不能与 `--auth chrome` 同用。安装器的 `setup.py --browser` 是启用专用浏览器准备的布尔开关，不接收通道名称。
 
-首次安装需联网下载 Python 依赖。**本机已安装 Chrome 或 Edge 时无需再下载 Playwright 内置 Chromium**——登录与查询会自动探测并优先使用本机浏览器；仅当所有本机候选都启动失败时，才回落到内置 Chromium，此时可补下：`.venv` 内执行 `python -m playwright install chromium --no-shell`。Ubuntu/Debian 缺系统库时，按权限运行 `.venv/bin/python -m playwright install-deps chromium`；安装器不会自动提权。没有桌面的 Linux 服务器暂不提供首次登录方案。详细路径、排障与状态清理见 [登录与安装说明](skills/jst-ai-agent/references/session-access.md)。
+首次安装需联网下载 Python 依赖。**探测到本机浏览器时，安装器跳过内置 Chromium 下载**；没有本机候选时才下载。安装时仅检查可执行文件，不启动浏览器或读取账号。自动查询模式会在启动失败时尝试后续候选，最后尝试内置 Chromium；如需补装，在 `.venv` 内执行 `python -m playwright install chromium --no-shell`。Ubuntu/Debian 缺系统库时，按权限运行 `.venv/bin/python -m playwright install-deps chromium`；安装器不会自动提权。没有桌面的 Linux 服务器暂不提供首次登录方案。详细路径、排障与状态清理见 [登录与安装说明](skills/jst-ai-agent/references/session-access.md)。
 
 ### 3. 开始分析
 

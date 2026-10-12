@@ -15,6 +15,8 @@ description: "基于当前登录公司的聚水潭 ERP 分析销量、库存、�
 
 首次安装、认证故障或客户使用 Windows/Linux/WorkBuddy 时，先读 [身份、公司切换及安装](references/session-access.md)。Python 3.12+ 执行 `scripts/setup.py` 初始化。Windows/Linux 默认使用专用浏览器；运行 `browser-login` 后由客户正常登录、验证、选公司并关闭整个专用浏览器窗口。后续自动读取此独立会话，不复用日常 Chrome。macOS 默认保留 Chrome 钥匙串方式，可指定 Profile，或安装器加 `--browser` 后在查询中用 `--auth browser`。首次接入或切换后用 `session-check` 核对身份与商品接口权限；它不证明全部数据域可读。跨平台代码与离线验证不等于 Windows/Linux 实机登录或 WorkBuddy 自动安装已验收。
 
+安装器探测到本机浏览器后跳过内置 Chromium 下载，未找到才下载。查询支持 `--browser msedge` 或可执行文件路径（优先于 `JST_BROWSER_CHANNEL`），显式指定失败不自动回退；macOS 查询指定 `--browser` 后也使用专用浏览器认证。安装器的同名 `--browser` 是布尔开关，不接收通道值。
+
 | 问题 | 当前入口 | 能力边界 |
 | --- | --- | --- |
 | 当前在售商品数量 | `scripts/query.sh onsale-count` | 普通商品与组合装全量计数、分别展示 |

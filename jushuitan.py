@@ -250,10 +250,10 @@ def chrome_session(cookie_path=CHROME_COOKIES):
         raise QueryError("无法读取本机 Chrome 的聚水潭会话，请检查登录状态和钥匙串访问。") from exc
 
 
-def browser_session():
+def browser_session(browser=None):
     from jst_browser import BrowserSessionError, browser_cookies
     try:
-        cookies = browser_cookies()
+        cookies = browser_cookies(browser=browser)
     except BrowserSessionError as exc:
         raise QueryError(str(exc)) from exc
     session = requests.Session()
@@ -531,6 +531,7 @@ def main():
     parser.add_argument("--chrome-profile", default="Default", help="Chrome Profile 目录名，如 Default 或 Profile 1")
     parser.add_argument("--auth", choices=["auto", "chrome", "browser"], default="auto",
                         help="auto：macOS 读取 Chrome，Windows/Linux 使用专用浏览器")
+    parser.add_argument("--browser", help="专用浏览器通道或可执行文件路径，如 msedge；指定后不自动回退")
     args = parser.parse_args()
     client = None
     try:
@@ -560,15 +561,19 @@ def main():
         if args.chrome_profile != "Default" and not re.fullmatch(r"Profile [1-9][0-9]*", args.chrome_profile):
             raise QueryError("--chrome-profile 应为 Default 或 Profile N 的目录名。")
         backend = authentication_backend(args.auth)
+        if args.browser:
+            if args.auth == "chrome":
+                raise QueryError("--browser 不能与 --auth chrome 同用。")
+            backend = "browser"
         if args.command == "browser-login":
             if args.auth == "chrome" or args.chrome_profile != "Default":
                 raise QueryError("browser-login 使用专用浏览器，不接受 --auth chrome 或 --chrome-profile。")
             from jst_browser import BrowserSessionError, browser_cookies
             try:
-                browser_cookies(login=True)
+                browser_cookies(login=True, browser=args.browser)
             except BrowserSessionError as exc:
                 raise QueryError(str(exc)) from exc
-            with browser_session() as session:
+            with browser_session(args.browser) as session:
                 identity = session_identity(session)
                 result = {"ok": True, "auth": "browser", "company_id": identity.company_id,
                           "user_id": identity.user_id,
@@ -578,7 +583,7 @@ def main():
         if backend == "browser" and args.chrome_profile != "Default":
             raise QueryError("--chrome-profile 仅适用于 macOS 的 --auth chrome。")
         cookie_path = CHROME_COOKIES.parent.parent / args.chrome_profile / "Cookies"
-        client = Client(session=chrome_session(cookie_path) if backend == "chrome" else browser_session())
+        client = Client(session=chrome_session(cookie_path) if backend == "chrome" else browser_session(args.browser))
         if args.command in plan_commands:
             from jst_replenishment import run_plan
             from jst_analysis import present_result

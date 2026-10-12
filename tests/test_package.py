@@ -66,15 +66,18 @@ class PackageTests(unittest.TestCase):
             with patch.dict(os.environ, {}, clear=True):
                 with patch.dict(sys.modules, {"_runtime": load("runtime_setup", scripts/"_runtime.py")}):
                     setup = load("setup_test", scripts/"setup.py")
-                for platform, directory in (("win32", "Scripts/python.exe"), ("linux", "bin/python"), ("darwin", "bin/python")):
+                for platform, directory, available in ((platform, directory, available)
+                        for platform, directory in (("win32", "Scripts/python.exe"), ("linux", "bin/python"), ("darwin", "bin/python"))
+                        for available in (False, True)):
                     with self.subTest(platform=platform), patch.object(sys, "platform", platform), \
                          patch.object(sys, "argv", ["setup"]), patch.object(setup.venv, "EnvBuilder") as env, \
-                         patch.object(setup.subprocess, "run") as run:
+                         patch.object(setup.subprocess, "run") as run, \
+                         patch.object(setup, "local_browser_available", return_value=available):
                         self.assertEqual(setup.main(), 0)
                         env.return_value.create.assert_called_once_with(runtime/".venv")
                         python = str(runtime/".venv"/directory)
                         self.assertEqual(run.call_args_list[0].args[0], [python, "-m", "pip", "install", "-r", str(runtime/"requirements.txt")])
-                        if platform == "darwin":
+                        if platform == "darwin" or available:
                             self.assertEqual(run.call_count, 1)
                         else:
                             self.assertEqual(run.call_args_list[1].args[0], [python, "-m", "playwright", "install", "chromium", "--no-shell"])

@@ -6,7 +6,7 @@
 
 | 平台 | 默认方式（`--auth auto`） | 客户首次操作 |
 | --- | --- | --- |
-| Windows | Playwright 专用 Chromium 浏览器 | 运行 `browser-login`，正常登录并选公司，关闭专用浏览器 |
+| Windows | 独立配置目录，优先使用本机 Chrome/Edge 等浏览器 | 运行 `browser-login`，正常登录并选公司，关闭专用浏览器 |
 | Linux 桌面 | 同上 | 同上；需图形桌面与浏览器系统库 |
 | macOS | 原有 Chrome 钥匙串方式 | 在日常 Chrome 正常登录；默认 Default Profile |
 | macOS 可选 | `--auth browser` 专用浏览器 | setup 加 `--browser`；登录后查询始终加 `--auth browser` |
@@ -19,7 +19,7 @@ Windows/Linux 不读取日常 Chrome 的加密 Cookie 数据库，不更改浏�
 
 技能目录包含 `scripts/`、`runtime/`（交付包）。从这个目录执行以下命令；其他工作目录使用脚本绝对路径。依次定位显式 `JST_AI_HOME`、技能内 runtime、项目相对位置；符号链接按真实目录定位，不依赖开发者路径。
 
-准备 Python 3.12 或更新版本。完整包包含源码和依赖清单，不含 Python、虚拟环境或浏览器二进制。安装需联网下载依赖与专用浏览器。
+准备 Python 3.12 或更新版本。完整包包含源码和依赖清单，不含 Python、虚拟环境或浏览器二进制。安装需联网下载 Python 依赖；Windows/Linux（或 macOS 的 setup.py --browser）会检查本机浏览器路径，找到候选后跳过内置 Chromium 下载，没有候选才下载。安装阶段不启动浏览器、不验证账号。
 
 Windows PowerShell：
 
@@ -56,7 +56,20 @@ python3 scripts/query.py browser-login
 python3 scripts/query.py session-check --auth browser
 ```
 
-安装只创建独立 `.venv`、安装依赖与浏览器，不读取账号或业务数据。macOS/Linux 的 `sh scripts/setup.sh` 是 Python 安装器的兼容入口，可用 `JST_PYTHON` 指定已确认的解释器。
+安装只创建独立 `.venv`、安装依赖，并按上述条件下载浏览器，不读取账号或业务数据。macOS/Linux 的 `sh scripts/setup.sh` 是 Python 安装器的兼容入口，可用 `JST_PYTHON` 指定已确认的解释器。
+
+## 指定浏览器与失败处理
+
+自动模式优先复用上次成功启动的浏览器，其次探测本机 Chrome、Edge、Brave、Chromium、Vivaldi 等，最后尝试 Playwright 内置 Chromium。检测出的实际可执行路径用于启动；Windows 支持 App Paths 注册表和常见安装目录，Linux 支持 PATH 和常见路径，macOS 支持系统及用户 Applications 目录。
+
+查询可用 `--browser msedge` 或 `--browser "浏览器可执行文件的绝对路径"` 指定浏览器，优先于环境变量 `JST_BROWSER_CHANNEL`。`--browser chromium` 指 Playwright 内置 Chromium，需先安装。显式指定失败直接报错，不自动回退；浏览器启动后若页面或会话读取失败，也不会换浏览器继续。自动回退到内置 Chromium 时同样执行完整登录和等待关闭流程。
+
+```powershell
+py -3 scripts/query.py browser-login --browser msedge
+py -3 scripts/query.py session-check --browser msedge
+```
+
+macOS 使用查询参数 `--browser` 时自动选择专用浏览器认证，不能同时指定 `--auth chrome` 或非默认 `--chrome-profile`。安装器的 `setup.py --browser` 仅用于 macOS 启用浏览器准备，是布尔开关，不接收 `msedge` 等名称。若本机候选无法启动且内置浏览器未安装，按提示检查系统环境，或在虚拟环境执行 `python -m playwright install chromium --no-shell` 后重试。
 
 ## WorkBuddy 接入
 

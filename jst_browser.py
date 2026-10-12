@@ -7,6 +7,7 @@
 """
 import json
 import os
+import shutil
 from pathlib import Path
 import sys
 import time
@@ -68,9 +69,9 @@ def _app_path(exe):
     """查注册表 App Paths，能覆盖自定义安装位置。"""
     if winreg is None:
         return None
-    tail = r"Microsoft\Windows\CurrentVersion\App Paths\\" + exe
+    tail = "Microsoft\\Windows\\CurrentVersion\\App Paths\\" + exe
     for hive, prefix in ((winreg.HKEY_CURRENT_USER, ""),
-                         (winreg.HKEY_LOCAL_MACHINE, r"WOW6432Node\\"),
+                         (winreg.HKEY_LOCAL_MACHINE, "WOW6432Node\\"),
                          (winreg.HKEY_LOCAL_MACHINE, "")):
         try:
             with winreg.OpenKey(hive, rf"SOFTWARE\{prefix}{tail}") as key:
@@ -82,39 +83,61 @@ def _app_path(exe):
     return None
 
 
-def _installed_dirs(relative):
-    bases = (os.environ.get("LOCALAPPDATA"), os.environ.get("PROGRAMFILES"),
-             os.environ.get("PROGRAMFILES(X86)"), os.environ.get("PROGRAMW6432"),
-            str(Path.home()/".local/share")) if sys.platform == "win32" else \
-           ("/opt/google/chrome", "/usr/bin", "/snap/bin")
-    return [Path(base)/relative for base in bases if base]
+# 与 _SPECS 按顺序对应；Linux 优先 PATH，再检查常见安装位置。
+_LINUX_NAMES = (
+    ("google-chrome", "google-chrome-stable"), ("google-chrome-beta",),
+    ("google-chrome-unstable",), ("microsoft-edge", "microsoft-edge-stable"),
+    ("microsoft-edge-beta",), ("brave-browser", "brave"),
+    ("chromium", "chromium-browser"), ("vivaldi-stable", "vivaldi"),
+)
+_LINUX_PATHS = (
+    "/opt/google/chrome/chrome", "/opt/google/chrome-beta/chrome",
+    "/opt/google/chrome-unstable/chrome", "/opt/microsoft/msedge/msedge",
+    "/opt/microsoft/msedge-beta/msedge", "/opt/brave.com/brave/brave-browser",
+    "/usr/lib/chromium/chromium", "/opt/vivaldi/vivaldi",
+)
+_MAC_APPS = (
+    ("Google Chrome", "Google Chrome"), ("Google Chrome Beta", "Google Chrome Beta"),
+    ("Google Chrome Dev", "Google Chrome Dev"), ("Microsoft Edge", "Microsoft Edge"),
+    ("Microsoft Edge Beta", "Microsoft Edge Beta"), ("Brave Browser", "Brave Browser"),
+    ("Chromium", "Chromium"), ("Vivaldi", "Vivaldi"),
+)
 
 
-def _find(spec):
-    label, exe, channel, relative, use_registry = spec
-    if use_registry:
-        found = _app_path(exe)
-        if found:
-            return found
-    for directory in _installed_dirs(relative):
-        candidate = directory/exe
-        if candidate.is_file():
+def _find(index, spec):
+    _label, exe, _channel, relative, use_registry = spec
+    if sys.platform == "win32":
+        if use_registry:
+            found = _app_path(exe)
+            if found:
+                return found
+        paths = [Path(base)/relative/exe for base in
+                 (os.environ.get("LOCALAPPDATA"), os.environ.get("PROGRAMFILES"),
+                  os.environ.get("PROGRAMFILES(X86)"), os.environ.get("PROGRAMW6432")) if base]
+    elif sys.platform == "darwin":
+        app, binary = _MAC_APPS[index]
+        paths = [base/(app+".app")/"Contents/MacOS"/binary
+                 for base in (Path("/Applications"), Path.home()/"Applications")]
+    else:
+        for name in _LINUX_NAMES[index]:
+            found = shutil.which(name)
+            if found:
+                return Path(found)
+        paths = [Path(_LINUX_PATHS[index])]
+    for candidate in paths:
+        if candidate.is_file() and (sys.platform == "win32" or os.access(candidate, os.X_OK)):
             return candidate
     return None
 
 
 def detect():
-    """返回按优先级排列、本机确实存在的浏览器候选。"""
+    """返回本机实际可执行路径；启动时不再交由通道重新定位。"""
     found = []
-    for spec in _SPECS:
-        path = _find(spec)
-        if not path:
-            continue
-        label, _exe, channel, _relative, _reg = spec
-        if channel:
-            found.append({"label": label, "kind": "channel", "value": channel, "path": str(path)})
-        else:
-            found.append({"label": label, "kind": "exe", "value": str(path), "path": str(path)})
+    for index, spec in enumerate(_SPECS):
+        path = _find(index, spec)
+        if path:
+            found.append({"label": spec[0], "kind": "exe", "value": str(path),
+                          "path": str(path), "channel": spec[2]})
     return found
 
 
@@ -153,6 +176,9 @@ def save_choice(candidate):
 def _as_candidate(value):
     if os.sep in str(value) or "/" in str(value):
         return {"label": "指定路径", "kind": "exe", "value": str(value), "path": str(value)}
+    for item in detect():
+        if item.get("channel") == value:
+            return item
     return {"label": value, "kind": "channel", "value": value, "path": ""}
 
 
@@ -194,7 +220,7 @@ def describe():
 
 # ---------- 会话获取 ----------
 
-def browser_cookies(login=False):
+def browser_cookies(login=False, browser=None):
     try:
         from playwright.sync_api import sync_playwright, Error, TimeoutError
     except ImportError as exc:
@@ -203,7 +229,7 @@ def browser_cookies(login=False):
     if not login and not directory.is_dir():
         raise BrowserSessionError("尚未连接聚水潭，请先运行 browser-login，在专用浏览器中正常登录。")
     tried = []
-    for candidate in candidates():
+    for candidate in candidates(browser):
         tried.append(candidate["label"])
         try:
             directory.mkdir(parents=True, exist_ok=True, mode=0o700)
@@ -211,17 +237,20 @@ def browser_cookies(login=False):
                 directory.chmod(0o700)
             with sync_playwright() as playwright:
                 options = {"headless": not login, "args": ["--restore-last-session"]}
-                if candidate["kind"] == "channel":
-                    context = playwright.chromium.launch_persistent_context(
-                        str(directory), channel=candidate["value"], **options)
-                else:
-                    context = playwright.chromium.launch_persistent_context(
-                        str(directory), executable_path=candidate["value"], **options)
+                try:
+                    if candidate["kind"] == "channel":
+                        context = playwright.chromium.launch_persistent_context(
+                            str(directory), channel=candidate["value"], **options)
+                    else:
+                        context = playwright.chromium.launch_persistent_context(
+                            str(directory), executable_path=candidate["value"], **options)
+                except Error:
+                    continue  # 只有启动失败才尝试下一个候选；指定模式只有一个候选。
                 try:
                     save_choice(candidate)
                     if login:
                         page = context.pages[0] if context.pages else context.new_page()
-                        print(f"已选用本机浏览器：{candidate['label']}", flush=True)
+                        print(f"已选用浏览器：{candidate['label']}", file=sys.stderr, flush=True)
                         print("请在专用浏览器正常登录聚水潭、完成验证并选择目标公司。"
                               "完成后关闭整个专用浏览器窗口（10分钟内）；不要向聊天发送密码或Cookie。",
                               file=sys.stderr)
@@ -234,20 +263,10 @@ def browser_cookies(login=False):
                     context.close()
         except TimeoutError as exc:
             raise BrowserSessionError("登录页面或操作等待超时，请重新运行 browser-login 完成登录。") from exc
-        except (Error, OSError):
-            continue  # 该浏览器不可用，自动顺延到下一个候选
-    # 所有本机候选都失败，才回落到 Playwright 内置 chromium（需要 setup.py 下载）
-    try:
-        with sync_playwright() as playwright:
-            context = playwright.chromium.launch_persistent_context(
-                str(directory), headless=not login, args=["--restore-last-session"])
-            try:
-                return None if login else erp_cookies(context.cookies())
-            finally:
-                context.close()
-    except (Error, OSError) as exc:
-        # 浏览器异常可能包含路径、URL甚至凭证，绝不转发原始异常。
-        raise BrowserSessionError(
-            "无法启动任何浏览器（已尝试：" + "、".join(tried) +
-            "）。请确认本机已安装 Chrome 或 Edge；或完成 setup.py 安装内置浏览器后重试，"
-            "并关闭正在使用的专用浏览器。Linux 登录需要桌面环境，系统库缺失时按安装说明补齐。") from exc
+        except (Error, OSError) as exc:
+            raise BrowserSessionError("专用浏览器操作失败，请关闭窗口后重试 browser-login；"
+                                      "不会自动切换到其他浏览器继续操作。") from exc
+    raise BrowserSessionError(
+        "无法启动选定的浏览器（已尝试：" + "、".join(tried) +
+        "）。请检查指定通道或路径，关闭正在使用的专用浏览器；"
+        "使用内置 Chromium 时请完成安装。Linux 登录需要桌面环境及浏览器系统库。")
